@@ -1,16 +1,37 @@
 ﻿#include <windows.h>
 #include <stdio.h>
-#include <GL/gl.h> // Добавлен для GLenum и других типов OpenGL
-#include "MinHook.h" // Предполагается, что MinHook уже подключен
+#include <GL/gl.h>
+#include "MinHook.h"
 
 // Определяем тип функции glDepthFunc
 typedef void (WINAPI* glDepthFunc_t)(GLenum func);
-glDepthFunc_t original_glDepthFunc = nullptr; // Указатель на оригинальную функцию
+glDepthFunc_t original_glDepthFunc = nullptr;
+
+// Глобальная переменная для включения/выключения Wallhack
+bool wallhackEnabled = false;
 
 // Наша замена для glDepthFunc
 void WINAPI Hooked_glDepthFunc(GLenum func) {
-    printf("[Wallhack] glDepthFunc called with parameter: %d\n", func);
-    original_glDepthFunc(func); // Вызываем оригинальную функцию
+    if (wallhackEnabled) {
+        // Отключаем проверку глубины для Wallhack
+        glDisable(GL_DEPTH_TEST);
+        printf("[Wallhack] Depth Test disabled\n");
+    }
+    else {
+        // Восстанавливаем нормальное поведение
+        glEnable(GL_DEPTH_TEST);
+        original_glDepthFunc(func);
+        printf("[Wallhack] Depth Test enabled, original func: %d\n", func);
+    }
+}
+
+// Функция для проверки нажатия клавиши
+void CheckWallhackToggle() {
+    if (GetAsyncKeyState(VK_F1) & 0x8000) { // Проверяем нажатие F1
+        wallhackEnabled = !wallhackEnabled; // Переключаем состояние
+        printf("[Wallhack] Toggled to: %s\n", wallhackEnabled ? "ON" : "OFF");
+        Sleep(200); // Задержка для предотвращения многократного срабатывания
+    }
 }
 
 // Функция для инициализации хуков
@@ -20,7 +41,6 @@ void InitializeHooks() {
         return;
     }
 
-    // Получаем адрес glDepthFunc из opengl32.dll
     HMODULE opengl32 = GetModuleHandle(L"opengl32.dll");
     if (!opengl32) {
         printf("[Error] Failed to get handle to opengl32.dll\n");
@@ -33,13 +53,11 @@ void InitializeHooks() {
         return;
     }
 
-    // Создаем хук
     if (MH_CreateHook(glDepthFunc_ptr, &Hooked_glDepthFunc, (LPVOID*)&original_glDepthFunc) != MH_OK) {
         printf("[Error] Failed to create hook for glDepthFunc\n");
         return;
     }
 
-    // Активируем хук
     if (MH_EnableHook(glDepthFunc_ptr) != MH_OK) {
         printf("[Error] Failed to enable hook for glDepthFunc\n");
         return;
@@ -50,16 +68,20 @@ void InitializeHooks() {
 
 // Основной поток DLL
 DWORD WINAPI MainThread(LPVOID lpParam) {
-    // Создаем консоль для отладки
     AllocConsole();
     FILE* f;
     freopen_s(&f, "CONOUT$", "w", stdout);
     printf("DLL Successfully Injected into Quake 3 Arena!\n");
+    printf("Press F1 to toggle Wallhack\n");
 
-    // Инициализируем хуки
     InitializeHooks();
 
-    // Консоль остается открытой
+    // Цикл для проверки клавиши
+    while (true) {
+        CheckWallhackToggle();
+        Sleep(100); // Уменьшаем нагрузку на процессор
+    }
+
     return 0;
 }
 
@@ -71,7 +93,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         CreateThread(NULL, 0, MainThread, NULL, 0, NULL);
         break;
     case DLL_PROCESS_DETACH:
-        MH_Uninitialize(); // Очищаем MinHook при выгрузке
+        MH_Uninitialize();
         break;
     }
     return TRUE;
