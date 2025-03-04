@@ -1,6 +1,6 @@
 # Игнорировать все файлы в папке Release
 Release/
-quake3a132/Release/
+Quakelll_Arena_v1.32/Release/
 .vs/
 
 # Игнорировать промежуточные файлы и логи
